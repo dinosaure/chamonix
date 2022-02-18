@@ -21,6 +21,8 @@ let string_escape = ref ('{', '}')
 let alpha = [ 'a'-'z' 'A'-'Z' ]
 let digit = [ '0'-'9' ]
 let print = [ '!'-'~' ]
+let print_without_quote_and_backslash =
+  [ ^ '\'' '/' ] # print
 let wsp = [ ' ' '\t' ]
 
 let name = alpha (alpha | digit | '_') *
@@ -28,7 +30,6 @@ let name = alpha (alpha | digit | '_') *
 rule lexer = parse
   | eof             { EOF }
   | ' ' | '\t'      { lexer lexbuf }
-  | '\''            { literal_string (Buffer.create 0x10) lexbuf }
   | '\n'            { incr_line lexbuf 0 ; lexer lexbuf }
   | "$"             { DOLLAR }
   | "("             { BRA }
@@ -83,7 +84,8 @@ rule lexer = parse
   | "atmark"        { ATMARK }
   | "attach"        { ATTACH }
   | "cursor"        { CURSOR }
-  | "define"        { DEFINE }
+  | "define" wsp+ (print+ as identifier)
+                    { DEFINE identifier }
   | "delete"        { DELETE }
   | "gopast"        { GOPAST }
   | "insert"        { INSERT }
@@ -106,7 +108,8 @@ rule lexer = parse
   | "backwards"     { BACKWARDS }
   | "externals"     { EXTERNALS }
   | "groupings"     { GROUPINGS }
-  | "stringdef"     { STRINGDEF }
+  | "stringdef" wsp+ (print+ as identifier)
+    { STRINGDEF identifier }
   | "substring"     { SUBSTRING }
   | "backwardmode"  { BACKWARDMODE }
   | "stringescapes" { string_escapes lexbuf ; lexer lexbuf }
@@ -114,18 +117,27 @@ rule lexer = parse
                     ; lexer lexbuf }
   | "//"            { comment lexbuf
                     ; lexer lexbuf }
+  | "'"             { literal_string (Buffer.create 0x10) lexbuf }
   | name as v       { NAME v }
   | digit+ as v     { NUMBER (int_of_string v) }
-  | print+ as v     { IDENTIFIER v }
   | _ as chr        { raise (Lexical_error chr) }
 and literal_string buf = parse
   | "'"             { LITERAL_STRING (!string_escape, Buffer.contents buf) }
   | "\n" as chr     { Buffer.add_char buf chr
                     ; incr_line lexbuf 0
                     ; literal_string buf lexbuf }
-  | _ as chr        { Buffer.add_char buf chr
-                    ; literal_string buf lexbuf }
+  | _ as chr       
+    { let a, b = !string_escape in
+      if chr = a
+      then ( Buffer.add_char buf chr ; literal_string_all b buf lexbuf ; literal_string buf lexbuf )
+      else ( Buffer.add_char buf chr ; literal_string buf lexbuf ) }
   | eof             { raise Invalid_literal_string }
+and literal_string_all eol buf = parse
+  | eof             { raise Invalid_literal_string }
+  | _ as chr
+    { if chr = eol
+      then ( Buffer.add_char buf eol )
+      else ( Buffer.add_char buf chr ; literal_string_all eol buf lexbuf ) }
 and comment = parse
   | "\n"            { incr_line lexbuf 0 ; () }
   | _               { comment lexbuf }
