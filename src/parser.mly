@@ -2,13 +2,13 @@
 %}
 
 %token DOLLAR BRA KET MULTIPLY PLUS MINUS DIVIDE LS ASSIGN GR DEBUG LEFT_SLICE
-  RIGHT_SLICE NE MULTIPLY_ASSIGN PLUS_ASSIGN MINUS_ASSIGN SLICE_TO COMMENT_2
-  COMMENT_1 DIVIDE_ASSIGN INSERT SLICE_FROM LE EQ ASSIGN_TO GE AS DO OR AND FOR
+  RIGHT_SLICE NE MULTIPLY_ASSIGN PLUS_ASSIGN MINUS_ASSIGN SLICE_TO
+  DIVIDE_ASSIGN INSERT SLICE_FROM LE EQ ASSIGN_TO GE AS DO OR AND FOR
   GET HEX HOP LEN NON NOT SET TRY FAIL GOTO LOOP NEXT SIZE TEST TRUE AMONG
   FALSE LENOF LIMIT UNSET ATMARK ATTACH CURSOR DELETE GOPAST  MAXINT
   MININT REPEAT SIZEOF TOMARK ATLEAST ATLIMIT DECIMAL REVERSE SETMARK STRINGS
   TOLIMIT BOOLEANS INTEGERS ROUTINES SETLIMIT BACKWARDS EXTERNALS GROUPINGS
-  SUBSTRING BACKWARDMODE STRINGESCAPES
+  SUBSTRING BACKWARDMODE
 
 %token<int> NUMBER
 %token<(char * char) * string> LITERAL_STRING
@@ -64,10 +64,6 @@ let arithmetic :=
   | a = arithmetic; DIVIDE; b = arithmetic;
     { Arithmetic.Divide (a, b) }
 
-let among_routine :=
-  | name = NAME; { [ Command.Routine name ] }
-  | { [ Command.True ] }
-
 let among_string :=
   | literal_string = LITERAL_STRING ; name = NAME?;
     { `Search (literal_string, name) }
@@ -99,9 +95,6 @@ let assign :=
     { Command.Assign (name, Arithmetic.(Minus (Name name, v))) }
   | DOLLAR; name = NAME; DIVIDE_ASSIGN; v = arithmetic;
     { Command.Assign (name, Arithmetic.(Divide (Name name, v))) }
-
-let substring :=
-  | SUBSTRING; ~ = command+; < >
 
 let command :=
   | AMONG; BRA; vs = among_string*; KET;
@@ -142,6 +135,8 @@ let command :=
   | TOLIMIT; { Command.To_limit }
   | INSERT; ~ = s; <Command.Insert>
   | TRUE; { Command.True }
+  | FALSE; { Command.False }
+  | ATTACH; ~ = s; <Command.Attach>
   | ~ = test; <Command.Arithmetic_test>
   | ~ = s; <Command.S>
   | ~ = assign; < >

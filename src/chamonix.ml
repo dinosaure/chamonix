@@ -22,8 +22,6 @@ module Parser = struct
     | PLUS_ASSIGN -> Fmt.string ppf "PLUS_ASSIGN"
     | MINUS_ASSIGN -> Fmt.string ppf "MINUS_ASSIGN"
     | SLICE_TO -> Fmt.string ppf "SLICE_TO"
-    | COMMENT_2 -> Fmt.string ppf "COMMENT_2"
-    | COMMENT_1 -> Fmt.string ppf "COMMENT_1"
     | DIVIDE_ASSIGN -> Fmt.string ppf "DIVIDE_ASSIGN"
     | INSERT -> Fmt.string ppf "INSERT"
     | SLICE_FROM -> Fmt.string ppf "SLICE_FROM"
@@ -84,7 +82,6 @@ module Parser = struct
     | STRINGDEF identifier -> Fmt.pf ppf "(@[<1>STRINGDEF@ %s@])" identifier
     | SUBSTRING -> Fmt.string ppf "SUBSTRING"
     | BACKWARDMODE -> Fmt.string ppf "BACKWARDMODE"
-    | STRINGESCAPES -> Fmt.string ppf "STRINGESCAPES"
     | NUMBER n -> Fmt.pf ppf "%d" n
     | LITERAL_STRING (_, str) -> Fmt.pf ppf "%S" str
     | NAME name -> Fmt.string ppf name

@@ -1,0 +1,9 @@
+(executable
+ (name parser)
+ (libraries chamonix alcotest))
+
+(rule
+ (alias runtest)
+ (deps (:exe parser.exe)
+       (source_tree ../algorithms))
+ (action (run %{exe} --color=always)))

@@ -27,6 +27,7 @@ type t =
   | Right_end
   | True
   | False
+  | Attach of [ `Literal_string of Literal_string.t | `Name of string ]
   | Assign_to of string
   | Commands of t list
   | Routine of string
@@ -101,3 +102,5 @@ let rec pp ppf = function
   | Insert (`Literal_string v) -> Fmt.pf ppf "insert %a" Literal_string.pp v
   | Insert (`Name v) -> Fmt.pf ppf "insert %s" v
   | At_mark v -> Fmt.pf ppf "atmark %a" Arithmetic.pp v
+  | Attach (`Literal_string v) -> Fmt.pf ppf "attach %a" Literal_string.pp v
+  | Attach (`Name v) -> Fmt.pf ppf "attach %s" v
