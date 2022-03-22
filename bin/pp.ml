@@ -2,11 +2,7 @@ open Chamonix
 
 let parse_in_channel ic =
   let lexbuf = Lexing.from_channel ic in
-  let lexer lexbuf =
-    let token = Lexer.lexer lexbuf in
-    Fmt.pr ">>> %a.\n%!" Parser.pp_token token ;
-    token in
-  try Ok (Parser.program lexer lexbuf)
+  try Ok (Parser.program Lexer.lexer lexbuf)
   with
   | Parser.Error ->
     let a = Lexing.lexeme_start_p lexbuf in
@@ -24,5 +20,8 @@ let parse_stdin () = parse_in_channel stdin
 
 let () =
   match parse_stdin () with
-  | Ok prgms -> Fmt.pr "%a" Fmt.(list ~sep:(any "\n") Program.pp) prgms
+  | Ok prgms ->
+    let gamma = Program.gamma prgms in
+    Format.set_margin 80 ;
+    Fmt.pr "%a" Fmt.(list ~sep:(any "\n") (Program.pp ~gamma)) prgms
   | Error (`Msg err) -> Fmt.epr "%s.\n%!" err

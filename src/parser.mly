@@ -18,7 +18,7 @@
 
 %token EOF
 
-%start<Program.t list> program
+%start<string Program.t list> program
 
 %left PLUS MINUS
 %right OR AND
@@ -38,7 +38,7 @@ let externals := | ~ = names(EXTERNALS); <Declaration.Externals>
 let groupings := | ~ = names(GROUPINGS); <Declaration.Groupings>
 
 let s :=
-  | v = LITERAL_STRING; { `Literal_string v }
+  | (escape, contents) = LITERAL_STRING; { `Literal_string (Literal_string.v ~escape contents) }
   | v = NAME; { `Name v }
 
 let injection(op, v) ==
@@ -65,10 +65,10 @@ let arithmetic :=
     { Arithmetic.Divide (a, b) }
 
 let among_string :=
-  | literal_string = LITERAL_STRING ; name = NAME?;
-    { `Search (literal_string, name) }
+  | (escape, contents) = LITERAL_STRING ; name = NAME?;
+    { `Search (Literal_string.v ~escape contents, name) }
   | BRA; cs = command*; KET;
-    { `Command cs }
+    { `Commands cs }
 
 let operator :=
   | EQ; { Test.Equal }
@@ -86,15 +86,18 @@ let test :=
 
 let assign :=
   | DOLLAR; name = NAME; ASSIGN; v = arithmetic;
-    { Command.Assign (name, v) }
+    { match v with
+      | Arithmetic.Name name' ->
+        Command.Assign (name, `Name name')
+      | _ as v -> Command.Assign (name, `Arithmetic v) }
   | DOLLAR; name = NAME; MULTIPLY_ASSIGN; v = arithmetic;
-    { Command.Assign (name, Arithmetic.(Multiply (Name name, v))) }
+    { Command.Assign (name, `Arithmetic Arithmetic.(Multiply (Name name, v))) }
   | DOLLAR; name = NAME; PLUS_ASSIGN; v = arithmetic;
-    { Command.Assign (name, Arithmetic.(Plus (Name name, v))) }
+    { Command.Assign (name, `Arithmetic Arithmetic.(Plus (Name name, v))) }
   | DOLLAR; name = NAME; MINUS_ASSIGN; v = arithmetic;
-    { Command.Assign (name, Arithmetic.(Minus (Name name, v))) }
+    { Command.Assign (name, `Arithmetic Arithmetic.(Minus (Name name, v))) }
   | DOLLAR; name = NAME; DIVIDE_ASSIGN; v = arithmetic;
-    { Command.Assign (name, Arithmetic.(Divide (Name name, v))) }
+    { Command.Assign (name, `Arithmetic Arithmetic.(Divide (Name name, v))) }
 
 let command :=
   | AMONG; BRA; vs = among_string*; KET;
@@ -102,29 +105,31 @@ let command :=
   | BRA; ~ = command*; KET; <Command.Commands>
   | a = command; OR; b = command; { Command.Or (a, b) }
   | a = command; AND; b = command; { Command.And (a, b) }
-  | NOT; v = command; %prec monadic { Command.Not v }
-  | TRY; v = command; %prec monadic { Command.Try v }
+  | NOT; v = command; %prec monadic { Command.Or (v, Command.True) }
+  | TRY; v = command; %prec monadic { Command.Or (v, Command.True) }
   | TEST; v = command; %prec monadic { Command.Test v }
-  | FAIL; v = command; %prec monadic { Command.Fail v }
-  | DO; v = command; %prec monadic { Command.Do v }
+  | FAIL; v = command; %prec monadic { Command.(Commands [ v; False ]) }
+  | DO; v = command; %prec monadic { Command.(Or (Or (v, True), True)) }
   | GOTO; v = command; %prec monadic { Command.Go_to v }
   | GOPAST; v = command; %prec monadic { Command.Go_past v }
   | REPEAT; v = command; %prec monadic { Command.Repeat v }
   | LOOP; n = arithmetic; v = command; %prec monadic { Command.Loop (n, v) }
-  | ATLEAST; n = arithmetic; v = command; %prec monadic { Command.At_least (n, v) }
+  | ATLEAST; n = arithmetic; v = command; %prec monadic
+    { Command.(Commands [ Loop (n, v); Repeat v ]) }
   | HOP; n = arithmetic; { Command.Hop n }
   | NON; MINUS; v = NAME; { Command.Non (Some `Minus, v) }
   | NON; v = NAME; { Command.Non (None, v) }
   | SLICE_FROM; ~ = s; <Command.Replace_slice>
-  | SLICE_TO; ~ = s; <Command.Move_slice>
+  | SLICE_TO; ~ = NAME; <Command.Move_slice>
   | SETMARK; ~ = NAME; <Command.Set_mark>
   | LEFT_SLICE ; { Command.Left_end }
   | RIGHT_SLICE ; { Command.Right_end }
   | ATMARK; ~ = arithmetic; <Command.At_mark>
-  | NEXT; { Command.Next }
-  | DELETE; { Command.Delete }
+  | NEXT; { Command.Hop (Arithmetic.Number 1) }
+  | DELETE; { Command.Replace_slice (`Literal_string Literal_string.empty) }
   | BACKWARDS; ~ = command; %prec monadic <Command.Backwards>
-  | DOLLAR; name = NAME; command = command; %prec monadic { Command.String (name, command) }
+  | DOLLAR; name = NAME; command = command; %prec monadic
+    { Command.String_command (name, command) }
   | SET; ~ = NAME; <Command.Set>
   | UNSET; ~ = NAME; <Command.Unset>
   | SETLIMIT; a = command; FOR; b = command; %prec monadic { Command.Set_limit (a, b) }
@@ -157,7 +162,7 @@ let p :=
   | v = declaration; { Program.Declaration v }
   | name = DEFINE; AS; command = command; { Program.Definition (name, command) }
   | BACKWARDMODE; BRA; v = p*; KET; { Program.Backward_mode v }
-  | name = STRINGDEF; v = LITERAL_STRING; { Program.String_definition (name, v) }
+  | name = STRINGDEF; (escape, contents) = LITERAL_STRING; { Program.String_definition (name, (Literal_string.v ~escape contents)) }
   | name = DEFINE; x = s; r = grouping*; { Program.Grouping { name; x; r; }}
 
 let program :=

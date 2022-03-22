@@ -4,6 +4,8 @@
 
 (rule
  (alias runtest)
- (deps (:exe parser.exe)
-       (source_tree ../algorithms))
- (action (run %{exe} --color=always)))
+ (deps
+  (:exe parser.exe)
+  (source_tree ../algorithms))
+ (action
+  (run %{exe} --color=always)))

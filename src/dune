@@ -1,8 +1,10 @@
 (library
  (name chamonix)
- (libraries fmt))
+ (libraries uutf fmt))
 
 (ocamllex lexer)
+
+(ocamllex unicode)
 
 (menhir
  (modules parser))
