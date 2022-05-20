@@ -56,9 +56,7 @@ let gamma :
 
 type ('e, 'a) t' =
   | Do : 'a Ty.t * ('e * 'a ref, unit) t' list -> ('e, unit) t'
-  | Routine :
-      string * ('e, 'a) Command.t' * ('e * Ty.routine, unit) t' list
-      -> ('e, unit) t'
+  | Routine : ('e, 'a) Command.t' * ('e, unit) t' list -> ('e, unit) t'
   | Backward_mod : ('e, 'a) t' list -> ('e, 'a list) t'
   | End : ('e, unit) t'
 
@@ -107,12 +105,21 @@ let rec typ ~constants ~gamma exprs =
                        Error.Gamma_mismatch { g0 = Gamma.V g0; g1 = Gamma.V g1 };
                      ]))
         | Error err -> Error (Error.map_expr [ expr ] err))
-    (* | (Definition (name, command) as expr) :: exprs -> (
-        match Command.typ ~constants ~gamma command with
-        | Ok (Command.Expr (command, gamma'')) ->
-            Ok (Expr ([ Definition (name, command) ], gamma''))
-        | Error err ->
-            Error (Error.map_expr [ expr ] err)) *)
+    | (Definition (_name, command) as expr) :: exprs -> (
+        match
+          (Command.typ ~constants ~gamma command, typ ~constants ~gamma exprs)
+        with
+        | Ok (Command.Expr (command, g0)), Ok (Expr (exprs', g1)) -> (
+            match Gamma.equal g0 g1 with
+            | Some Refl.Refl -> Ok (Expr ([ Routine (command, exprs') ], g1))
+            | _ ->
+                Error
+                  (Error.v exprs gamma
+                     [
+                       Error.Gamma_mismatch { g0 = Gamma.V g0; g1 = Gamma.V g1 };
+                     ]))
+        | Error err, _ -> Error (Error.map_expr [ expr ] err)
+        | _, Error err -> Error err)
     | [] ->
         let (Gamma.V gamma) = Gamma.typ gamma in
         Ok (Expr ([ End ], gamma))
