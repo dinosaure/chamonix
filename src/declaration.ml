@@ -11,5 +11,7 @@ let pp ppf = function
   | Integers vs -> Fmt.pf ppf "integers(%a)" Fmt.(list ~sep:(any " ") string) vs
   | Booleans vs -> Fmt.pf ppf "booleans(%a)" Fmt.(list ~sep:(any " ") string) vs
   | Routines vs -> Fmt.pf ppf "routines(%a)" Fmt.(list ~sep:(any " ") string) vs
-  | Externals vs -> Fmt.pf ppf "externals(%a)" Fmt.(list ~sep:(any " ") string) vs
-  | Groupings vs -> Fmt.pf ppf "groupings(%a)" Fmt.(list ~sep:(any " ") string) vs
+  | Externals vs ->
+      Fmt.pf ppf "externals(%a)" Fmt.(list ~sep:(any " ") string) vs
+  | Groupings vs ->
+      Fmt.pf ppf "groupings(%a)" Fmt.(list ~sep:(any " ") string) vs

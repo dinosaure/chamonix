@@ -21,7 +21,15 @@ let parse_stdin () = parse_in_channel stdin
 let () =
   match parse_stdin () with
   | Ok prgms ->
-    let gamma = Program.gamma prgms in
+    let constants = Program.constants prgms in
     Format.set_margin 80 ;
-    Fmt.pr "%a" Fmt.(list ~sep:(any "\n") (Program.pp ~gamma)) prgms
+    Fmt.pr "%a\n%!" Fmt.(list ~sep:(any "\n")
+      (Program.pp ~gamma:constants)) prgms ;
+    let prgms, _gamma = Program.gamma prgms in
+    ( match Program.typ ~constants ~gamma:[] prgms with
+    | Ok (Program.Expr (prgms, Gamma.[])) ->
+      let state = State.of_string Sys.argv.(1) in
+      Program.eval ~gamma:((), Gamma.[]) ~state prgms
+    | Ok _ -> assert false
+    | Error _ -> Fmt.epr "Got an error while typing." )
   | Error (`Msg err) -> Fmt.epr "%s.\n%!" err

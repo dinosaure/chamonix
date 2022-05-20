@@ -88,5 +88,7 @@ module Parser = struct
     | EOF -> Fmt.string ppf "EOF"
 end
 
+module Gamma = Gamma
 module Program = Program
 module Location = Location
+module State = State
