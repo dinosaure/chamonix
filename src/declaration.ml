@@ -6,6 +6,21 @@ type t =
   | Externals of string list
   | Groupings of string list
 
+let typ = function
+  | Strings _ -> (`String, Ty.(V String))
+  | Integers _ -> (`Int, Ty.(V Int))
+  | Booleans _ -> (`Bool, Ty.(V Bool))
+  | _ -> assert false (* TODO *)
+
+let names = function
+  | Strings names
+  | Integers names
+  | Booleans names
+  | Routines names
+  | Externals names
+  | Groupings names ->
+      names
+
 let pp ppf = function
   | Strings vs -> Fmt.pf ppf "strings(%a)" Fmt.(list ~sep:(any " ") string) vs
   | Integers vs -> Fmt.pf ppf "integers(%a)" Fmt.(list ~sep:(any " ") string) vs

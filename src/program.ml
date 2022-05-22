@@ -56,34 +56,59 @@ let gamma :
 
 type ('e, 'a) t' =
   | Do : 'a Ty.t * ('e * 'a ref, unit) t' list -> ('e, unit) t'
-  | Routine : ('e, 'a) Command.t' * ('e, unit) t' list -> ('e, unit) t'
+  | Routine :
+      routine * mode * ('e, bool) Command.t' * ('e, unit) t' list
+      -> ('e, unit) t'
   | Backward_mod : ('e, 'a) t' list -> ('e, 'a list) t'
   | End : ('e, unit) t'
+
+and routine = string
+and mode = [ `Forward | `Backward ]
+(* XXX(dinosaure): in our language, [Routine] is **not** a first class citizen
+ * value as a function [unit -> unit] but a jump. The langauge is not powerful
+ * enough to keep pointers to function, so [typ] just try to type body of the
+ * routine and continue the process to the [End]. *)
 
 type expr = Expr : ('e, unit) t' list * 'e Gamma.t -> expr
 
 let safe () = assert false
 let always x _y = x
 
-let rec typ ~constants ~gamma exprs =
-  let go :
+let externals exprs =
+  let module Set = Set.Make (String) in
+  let rec go acc = function
+    | [] -> acc
+    | Declaration (Declaration.Externals names) :: exprs ->
+        let acc = List.fold_left (fun acc x -> Set.add x acc) acc names in
+        go acc exprs
+    | _ :: exprs -> go acc exprs
+  in
+  Set.elements (go Set.empty exprs)
+
+let typ ~constants ~gamma exprs =
+  let rec go :
       gamma:Gamma.gamma ->
+      mode:[ `Forward | `Backward ] ->
       de_bruijn_index list ->
       (expr, de_bruijn_index list Error.v) result =
-   fun ~gamma exprs ->
+   fun ~gamma ~mode exprs ->
     match exprs with
-    | String_definition _ :: exprs -> typ ~constants ~gamma exprs
-    | Grouping _ :: exprs -> typ ~constants ~gamma exprs
-    | (Declaration (Declaration.Strings names) as expr) :: exprs -> (
+    | String_definition _ :: exprs -> go ~gamma ~mode exprs
+    | Grouping _ :: exprs -> go ~gamma ~mode exprs
+    | Declaration (Declaration.Externals _names) :: exprs ->
+        go ~gamma ~mode exprs
+    | (Declaration decls as expr) :: exprs -> (
+        let names = Declaration.names decls in
+        let v, Ty.V typ' = Declaration.typ decls in
         let (Gamma.V g0) =
           let rec go (Gamma.V gamma) = function
             | [] -> Gamma.V gamma
-            | _name :: names -> go Gamma.(V (Ty.String :: gamma)) names
+            | _name :: names -> go Gamma.(V (typ' :: gamma)) names
           in
           go (Gamma.typ gamma) names
         in
-        let gamma = List.map (always `String) names @ gamma in
-        match typ ~constants ~gamma exprs with
+        let gamma = List.map (always v) names @ gamma in
+        match go ~gamma ~mode exprs with
         | Ok (Expr (expr', g1)) -> (
             match Gamma.equal g0 g1 with
             | Some Refl.Refl ->
@@ -91,8 +116,10 @@ let rec typ ~constants ~gamma exprs =
                   List.fold_left
                     (fun decls _name ->
                       match decls with
-                      | Expr (decl, Ty.String :: gamma) ->
-                          Expr ([ Do (Ty.String, decl) ], gamma)
+                      | Expr (decl, typ'' :: gamma) -> (
+                          match Ty.equal typ' typ'' with
+                          | Some Refl.Refl -> Expr ([ Do (typ', decl) ], gamma)
+                          | None -> safe ())
                       | _ -> safe ())
                     (Expr (expr', g0))
                     names
@@ -105,13 +132,14 @@ let rec typ ~constants ~gamma exprs =
                        Error.Gamma_mismatch { g0 = Gamma.V g0; g1 = Gamma.V g1 };
                      ]))
         | Error err -> Error (Error.map_expr [ expr ] err))
-    | (Definition (_name, command) as expr) :: exprs -> (
+    | (Definition (name, command) as expr) :: exprs -> (
         match
-          (Command.typ ~constants ~gamma command, typ ~constants ~gamma exprs)
+          (Command.typ ~constants ~gamma command, go ~gamma ~mode exprs)
         with
         | Ok (Command.Expr (command, g0)), Ok (Expr (exprs', g1)) -> (
             match Gamma.equal g0 g1 with
-            | Some Refl.Refl -> Ok (Expr ([ Routine (command, exprs') ], g1))
+            | Some Refl.Refl ->
+                Ok (Expr ([ Routine (name, mode, command, exprs') ], g1))
             | _ ->
                 Error
                   (Error.v exprs gamma
@@ -120,24 +148,46 @@ let rec typ ~constants ~gamma exprs =
                      ]))
         | Error err, _ -> Error (Error.map_expr [ expr ] err)
         | _, Error err -> Error err)
+    | Backward_mode exprs :: exprs' -> (
+        let (Gamma.V g0) = Gamma.typ gamma in
+        match go ~mode:`Backward ~gamma exprs with
+        | Ok (Expr (exprs, g1)) -> (
+            match go ~mode ~gamma exprs' with
+            | Ok (Expr (exprs', g2)) -> (
+                match (Gamma.equal g0 g1, Gamma.equal g1 g2) with
+                | Some Refl.Refl, Some Refl.Refl ->
+                    Ok (Expr (exprs @ exprs', g2))
+                | _ -> assert false (* TODO *))
+            | Error _ as err -> err)
+        | Error _ as err -> err)
     | [] ->
         let (Gamma.V gamma) = Gamma.typ gamma in
         Ok (Expr ([ End ], gamma))
-    | _ -> assert false
   in
-  go ~gamma exprs
+  go ~mode:`Forward ~gamma exprs
 
-let rec eval :
-    type e. gamma:e * e Gamma.t -> state:State.t -> (e, unit) t' list -> unit =
- fun ~gamma:(g, g') ~state exprs ->
-  let rec go = function
+let eval :
+    type e0.
+    routine:string ->
+    gamma:e0 * e0 Gamma.t ->
+    state:State.t ->
+    (e0, unit) t' list ->
+    unit =
+ fun ~routine ~gamma ~state exprs ->
+  let rec go :
+      type e1.
+      gamma:e1 * e1 Gamma.t -> state:State.t -> (e1, unit) t' list -> unit =
+   fun ~gamma:((g, g') as gamma) ~state -> function
     | Do (Ty.String, exprs) :: exprs' ->
-        eval ~gamma:((g, ref ""), Gamma.(Ty.String :: g')) ~state exprs;
-        go exprs'
+        go ~gamma:((g, ref ""), Gamma.(Ty.String :: g')) ~state exprs;
+        go ~gamma ~state exprs'
+    | Routine (routine', mode, cmd, _expr) :: exprs' when routine = routine' ->
+        let _ (* TODO *) = Command.eval ~gamma ~mode ~state cmd in
+        go ~gamma ~state exprs'
     | [ End ] | [] -> ()
     | _ -> assert false
   in
-  go exprs
+  go ~gamma ~state exprs
 
 let pp_s ~gamma ppf = function
   | `Literal_string v -> Literal_string.pp ~gamma ppf v

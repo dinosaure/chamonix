@@ -108,9 +108,11 @@ let rec eval :
       let value = eval ~gamma ~mode ~state expr in
       set g var value;
       true
+  | Seq [] -> true
   | _ -> assert false
 
 type expr = Expr : ('e, bool) t' * 'e Gamma.t -> expr
+type sequence = Sequence : ('e, bool) t' list * 'e Gamma.t -> sequence
 
 exception Unbound_variable of string
 
@@ -236,6 +238,27 @@ let rec typ ~constants ~gamma expr =
                        Error.Gamma_mismatch { g0 = Gamma.V g0; g1 = Gamma.V g1 };
                      ]))
         | Error err, _ | _, Error err -> Error (Error.map_expr expr err))
+    | Commands cmds -> (
+        let (Gamma.V g0) = Gamma.typ gamma in
+        let rec go (Sequence (acc, g0)) = function
+          | [] -> Ok (Sequence (List.rev acc, g0))
+          | x :: r -> (
+              match typ ~constants ~gamma x with
+              | Ok (Expr (x', g1)) -> (
+                  match Gamma.equal g0 g1 with
+                  | Some Refl.Refl -> go (Sequence (x' :: acc, g0)) r
+                  | None ->
+                      Error
+                        (Error.v expr gamma
+                           [
+                             Error.Gamma_mismatch
+                               { g0 = Gamma.V g0; g1 = Gamma.V g1 };
+                           ]))
+              | Error _ as err -> err)
+        in
+        match go (Sequence ([], g0)) cmds with
+        | Ok (Sequence (lst, g0)) -> Ok (Expr (Seq lst, g0))
+        | Error _ as err -> err)
     | _ -> assert false
   in
   go ~gamma expr

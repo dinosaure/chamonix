@@ -26,10 +26,11 @@ let () =
     Fmt.pr "%a\n%!" Fmt.(list ~sep:(any "\n")
       (Program.pp ~gamma:constants)) prgms ;
     let prgms, _gamma = Program.gamma prgms in
+    let[@warning "-8"] [ routine ] = Program.externals prgms in
     ( match Program.typ ~constants ~gamma:[] prgms with
     | Ok (Program.Expr (prgms, Gamma.[])) ->
       let state = State.of_string Sys.argv.(1) in
-      Program.eval ~gamma:((), Gamma.[]) ~state prgms
+      Program.eval ~routine ~gamma:((), Gamma.[]) ~state prgms
     | Ok _ -> assert false
     | Error _ -> Fmt.epr "Got an error while typing." )
   | Error (`Msg err) -> Fmt.epr "%s.\n%!" err
