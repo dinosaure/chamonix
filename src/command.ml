@@ -47,7 +47,7 @@ type ('e, 'a) t' =
   | Bin : [ `And | `Or ] * ('e, bool) t' * ('e, bool) t' -> ('e, bool) t'
   | Var : ('e, 'a ref) Var.t -> ('e, 'a) t'
   | Val : 'a Ty.t * 'a -> ('e, 'a) t'
-  | Hop : ('e, int) t' -> ('e, bool) t'
+  | Hop : 'e Arithmetic.t' -> ('e, bool) t'
   | For : 'e Arithmetic.t' * ('e, bool) t' list -> ('e, bool) t'
   | Seq : ('e, bool) t' list -> ('e, bool) t'
   | Test : ('e, bool) Test.t' -> ('e, bool) t'
@@ -100,7 +100,9 @@ let rec eval :
   | Bin (`Or, a, b) -> eval ~gamma ~mode ~state a || eval ~gamma ~mode ~state b
   | Var var -> nth g var
   | Val (_ty, v) -> v
-  | Hop e -> State.hop ~mode state (eval ~gamma ~mode ~state e)
+  | Hop e ->
+      let gamma = gamma_to_list g' g in
+      State.hop ~mode state (Arithmetic.eval ~gamma ~mode ~state e)
   | Test test -> Test.eval ~gamma:(gamma_to_list g' g) ~mode ~state test
   | At_limit -> State.cursor state = State.limit ~mode state
   | At_mark e -> State.cursor state = eval ~gamma ~mode ~state e
@@ -109,6 +111,12 @@ let rec eval :
       set g var value;
       true
   | Seq [] -> true
+  | Seq lst ->
+      let rec go = function
+        | [] -> true
+        | x :: r -> if eval ~gamma ~mode ~state x then go r else false
+      in
+      go lst
   | _ -> assert false
 
 type expr = Expr : ('e, bool) t' * 'e Gamma.t -> expr
@@ -214,6 +222,10 @@ let rec typ ~constants ~gamma expr =
       (expr, de_bruijn_index Error.v) result =
    fun ~gamma expr ->
     match expr with
+    | Hop a -> (
+        match Arithmetic.typ ~constants ~gamma a with
+        | Ok (Arithmetic.Expr (expr, g)) -> Ok (Expr (Hop expr, g))
+        | Error err -> Error (Error.map_expr expr err))
     | Or (a, b) -> (
         match (typ ~constants ~gamma a, typ ~constants ~gamma b) with
         | Ok (Expr (a', g0)), Ok (Expr (b', g1)) -> (

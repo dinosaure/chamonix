@@ -1,7 +1,6 @@
 type t = {
   mutable cursor : int;
-  mutable limit_forward : int;
-  mutable limit_backward : int;
+  mutable limit : int;
   mutable x : int;
   mutable y : int;
   mutable p : string;
@@ -10,26 +9,23 @@ type t = {
 let of_string str =
   {
     cursor = 0;
-    limit_forward = String.length str;
-    limit_backward = 0;
+    limit = String.length str;
     x = 0;
     y = String.length str;
     p = str;
   }
 
 let cursor t = t.cursor
-
-let limit ~mode t =
-  match mode with `Forward -> t.limit_forward | `Backward -> t.limit_backward
+let limit ~mode:_ t = t.limit
 
 let hop ~mode t n =
-  let o, c =
-    match mode with `Forward -> (( + ), ( < )) | `Backward -> (( - ), ( > ))
+  let op, cmp =
+    match mode with `Forward -> (( + ), ( > )) | `Backward -> (( - ), ( < ))
   in
-  if n >= 0 && c (o t.cursor n) (limit ~mode t) then (
-    t.cursor <- o t.cursor n;
+  if n >= 0 && cmp (op t.cursor n) t.limit then false
+  else (
+    t.cursor <- op t.cursor n;
     true)
-  else false
 
 let utf_8_string_length str =
   let folder acc _idx = function
@@ -45,8 +41,7 @@ let len ~encoding t =
 
 let reset state old =
   state.cursor <- old.cursor;
-  state.limit_forward <- old.limit_forward;
-  state.limit_backward <- old.limit_backward;
+  state.limit <- old.limit;
   state.x <- old.x;
   state.y <- old.y;
   state.p <- old.p
@@ -54,8 +49,7 @@ let reset state old =
 let clone state =
   {
     cursor = state.cursor;
-    limit_forward = state.limit_forward;
-    limit_backward = state.limit_backward;
+    limit = state.limit;
     x = state.x;
     y = state.y;
     p = state.p;
