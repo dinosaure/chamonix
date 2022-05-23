@@ -155,15 +155,16 @@ let declaration :=
   | ~ = groupings ; < >
 
 let grouping :=
-  | PLUS; v = s; { `Plus, v }
-  | MINUS; v = s; { `Minus, v }
+  | ~ = s; <Grouping.Leaf>
+  | a = grouping; PLUS; b = grouping; { Grouping.Add (a, b) }
+  | a = grouping; MINUS; b = grouping; { Grouping.Sub (a, b) }
 
 let p := 
   | v = declaration; { Program.Declaration v }
   | name = DEFINE; AS; command = command; { Program.Definition (name, command) }
   | BACKWARDMODE; BRA; v = p*; KET; { Program.Backward_mode v }
   | name = STRINGDEF; (escape, contents) = LITERAL_STRING; { Program.String_definition (name, (Literal_string.v ~escape contents)) }
-  | name = DEFINE; x = s; r = grouping*; { Program.Grouping { name; x; r; }}
+  | name = DEFINE; g = grouping; { Program.Grouping (name, g) }
 
 let program :=
   | ~ = p* ; EOF ; < >

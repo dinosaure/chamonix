@@ -8,6 +8,19 @@ let rec to_int : type e a. (e, a) t -> int = function
   | Z -> 0
   | S v -> succ (to_int v)
 
+let rec of_int : type e. gamma:e Gamma.t -> int -> (v, unit) result =
+ fun ~gamma n ->
+  match (gamma, n) with
+  | Gamma.[], _ -> assert false
+  | Gamma.(t :: _), 0 -> Ok (V (Z, gamma, t))
+  | Gamma.(_ :: r), n -> (
+      match of_int ~gamma:r (pred n) with
+      | Ok (V (n, r', t')) -> (
+          match Gamma.equal r r' with
+          | Some Refl.Refl -> Ok (V (S n, gamma, t'))
+          | None -> assert false)
+      | Error _ -> assert false)
+
 let rec typ : gamma:Gamma.gamma -> int -> v =
  fun ~gamma v ->
   match (v, gamma) with

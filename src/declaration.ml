@@ -10,6 +10,7 @@ let typ = function
   | Strings _ -> (`String, Ty.(V String))
   | Integers _ -> (`Int, Ty.(V Int))
   | Booleans _ -> (`Bool, Ty.(V Bool))
+  | Groupings _ -> (`Grouping, Ty.(V Grouping))
   | _ -> assert false (* TODO *)
 
 let names = function

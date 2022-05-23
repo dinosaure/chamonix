@@ -3,14 +3,7 @@ type 'v t =
   | String_definition of string * Literal_string.t
   | Definition of string * 'v Command.t
   | Backward_mode of 'v t list
-  | Grouping of {
-      name : string;
-      x : [ `Literal_string of Literal_string.t | `Name of string ];
-      r :
-        ([ `Plus | `Minus ]
-        * [ `Literal_string of Literal_string.t | `Name of string ])
-        list;
-    }
+  | Grouping of 'v * 'v Grouping.t
 
 type de_bruijn_index = int t
 type bound_variables = string t
@@ -24,6 +17,8 @@ let constants : 'v t list -> (string, Literal_string.t) Hashtbl.t =
     prgms;
   tbl
 
+exception Unbound_variable of string
+
 let rec index ~gamma : bound_variables -> de_bruijn_index = function
   | Declaration
       (Declaration.(
@@ -31,11 +26,11 @@ let rec index ~gamma : bound_variables -> de_bruijn_index = function
          | Integers names
          | Booleans names
          | Routines names
-         | Externals names
          | Groupings names )) as decls) ->
       let top = Hashtbl.length gamma in
       List.iteri (fun index name -> Hashtbl.add gamma name (top + index)) names;
       Declaration decls
+  | Declaration (Declaration.Externals _names as decls) -> Declaration decls
   | String_definition (name, str) -> String_definition (name, str)
   | Definition (name, command) ->
       let command = Command.index ~gamma command in
@@ -45,7 +40,11 @@ let rec index ~gamma : bound_variables -> de_bruijn_index = function
   | Backward_mode prgms ->
       let prgms = List.map (index ~gamma) prgms in
       Backward_mode prgms
-  | Grouping g -> Grouping g
+  | Grouping (name, g) -> (
+      match Hashtbl.find_opt gamma name with
+      | Some ridx ->
+          Grouping (Hashtbl.length gamma - 1 - ridx, Grouping.index ~gamma g)
+      | None -> raise (Unbound_variable name))
 
 let gamma :
     bound_variables list -> de_bruijn_index list * (string, int) Hashtbl.t =
@@ -56,6 +55,9 @@ let gamma :
 
 type ('e, 'a) t' =
   | Do : 'a Ty.t * ('e * 'a ref, unit) t' list -> ('e, unit) t'
+  | Set_grouping :
+      ('e, Uset.t ref) Var.t * 'e Grouping.t' * ('e, 'a) t' list
+      -> ('e, 'a) t'
   | Routine :
       routine * mode * ('e, bool) Command.t' * ('e, unit) t' list
       -> ('e, unit) t'
@@ -94,7 +96,26 @@ let typ ~constants ~gamma exprs =
    fun ~gamma ~mode exprs ->
     match exprs with
     | String_definition _ :: exprs -> go ~gamma ~mode exprs
-    | Grouping _ :: exprs -> go ~gamma ~mode exprs
+    | Grouping (idx, g) :: exprs -> (
+        let (Gamma.V g0) = Gamma.typ gamma in
+        match
+          ( Var.of_int ~gamma:g0 idx,
+            Grouping.typ ~constants ~gamma g,
+            go ~gamma ~mode exprs )
+        with
+        | ( Ok (Var.V (var, g1, Ty.Grouping)),
+            Ok (Grouping.Expr (g, g2)),
+            Ok (Expr (exprs, g3)) ) -> (
+            match (Gamma.equal g0 g1, Gamma.equal g1 g2, Gamma.equal g2 g3) with
+            | Some Refl.Refl, Some Refl.Refl, Some Refl.Refl ->
+                Ok (Expr ([ Set_grouping (var, g, exprs) ], g1))
+            | _ -> assert false)
+        | _, _, (Error _ as err) -> err
+        | Error _, Error _, Ok _ -> assert false
+        | Ok (Var.V (_, _, ty)), _, _ ->
+            Fmt.failwith "Var typed with something else (idx: %d): %a" idx Ty.pp
+              ty
+        | Error _, Ok _, _ -> failwith "Var failed but grouping typed.")
     | Declaration (Declaration.Externals _names) :: exprs ->
         go ~gamma ~mode exprs
     | (Declaration decls as expr) :: exprs -> (
@@ -166,6 +187,12 @@ let typ ~constants ~gamma exprs =
   in
   go ~mode:`Forward ~gamma exprs
 
+let rec set : type e a. e -> (e, a ref) Var.t -> a -> unit =
+ fun gamma var v ->
+  match (var, gamma) with
+  | Var.Z, (_rest, value) -> value := v
+  | Var.S n, (gamma, _) -> set gamma n v
+
 let eval :
     type e0.
     routine:string ->
@@ -181,8 +208,16 @@ let eval :
     | Do (Ty.String, exprs) :: exprs' ->
         go ~gamma:((g, ref ""), Gamma.(Ty.String :: g')) ~state exprs;
         go ~gamma ~state exprs'
+    | Do (Ty.Grouping, exprs) :: exprs' ->
+        go ~gamma:((g, ref Uset.empty), Gamma.(Ty.Grouping :: g')) ~state exprs;
+        go ~gamma ~state exprs'
     | Routine (routine', mode, cmd, _expr) :: exprs' when routine = routine' ->
         let _ (* TODO *) = Command.eval ~gamma ~mode ~state cmd in
+        go ~gamma ~state exprs'
+    | Set_grouping (var, uset, exprs) :: exprs' ->
+        let uset = Grouping.eval ~gamma:g uset in
+        set g var uset;
+        let _ (* TODO *) = go ~gamma ~state exprs in
         go ~gamma ~state exprs'
     | [ End ] | [] -> ()
     | _ -> assert false
@@ -204,13 +239,4 @@ let rec pp ~gamma : bound_variables Fmt.t =
       Fmt.pf ppf "backwardmode @[<hov 1>(%a)@]"
         Fmt.(list ~sep:(any "@\n") (pp ~gamma))
         t
-  | Grouping { name; x; r = [] } ->
-      Fmt.pf ppf "define %s %a" name (pp_s ~gamma) x
-  | Grouping { name; x; r } ->
-      let pp_grouping ppf = function
-        | `Plus, v -> Fmt.pf ppf "+%a" (pp_s ~gamma) v
-        | `Minus, v -> Fmt.pf ppf "-%a" (pp_s ~gamma) v
-      in
-      Fmt.pf ppf "define %s %a @[<hov>%a@]" name (pp_s ~gamma) x
-        Fmt.(list ~sep:(any "@ ") pp_grouping)
-        r
+  | Grouping (name, g) -> Fmt.pf ppf "define %s %a" name (Grouping.pp ~gamma) g

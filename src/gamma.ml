@@ -1,6 +1,6 @@
 type _ t = [] : unit t | ( :: ) : 'a Ty.t * 'gamma t -> ('gamma * 'a ref) t
 type v = V : 'a t -> v
-type gamma = [ `Unit | `Int | `Bool | `String ] list
+type gamma = [ `Unit | `Int | `Bool | `String | `Grouping ] list
 (* XXX(dinosaure): de bruijn gamma environment *)
 
 let rec typ : gamma -> v = function
